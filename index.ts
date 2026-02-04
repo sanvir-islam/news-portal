@@ -66,3 +66,5 @@ const PORT = process.env.PORT || 5000;
     console.error("❌ Critical Startup Error:", error);
   }
 })();
+
+console.log("TESTING AUTO DEPLOY 🚀");
