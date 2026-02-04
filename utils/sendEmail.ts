@@ -32,7 +32,7 @@ export async function sendEmail(to: string, type: EmailTemplate, data: string) {
     const emailHtml = getEmailTemplate(type, data);
 
     const response = await resend.emails.send({
-      from: "noreply@protidinjonotarnews.com",
+      from: "noreply@api.protidinjonotarnews.com",
       to: to,
       subject: subject,
       html: emailHtml,
