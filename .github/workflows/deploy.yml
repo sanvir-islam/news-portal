@@ -15,10 +15,20 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # Make sure this matches your actual folder name on VPS!
+            # 1. Load NVM (Node Version Manager) so npm works
+            export NVM_DIR=~/.nvm
+            source ~/.nvm/nvm.sh
+
+            # 2. Go to folder
             cd ~/news-portal
-            git pull
+
+            # 3. Update Code
+            git pull origin main
+
+            # 4. Install & Build (Now this will actually work!)
             npm install
             npm run build
+
+            # 5. Restart
             pm2 restart news-api
-            echo "🚀 Auto-Deployment Successful!"
+            echo "🚀 FULL DEPLOYMENT COMPLETE"
