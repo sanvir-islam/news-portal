@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { verificationEmailTemplate } from "../templates/verificationEmail";
 
-// 1. Initialize Resend.
+// 1. Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 type EmailTemplate = "verification" | "passwordReset";
