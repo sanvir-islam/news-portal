@@ -38,9 +38,14 @@ const addToBreakingNewsList = async (postId: Types.ObjectId | string) => {
 // ==========================================
 // OTHER HELPERS
 // ==========================================
+
+// ✅ FIXED: Silent cleanup (No error if file is already gone)
 const safeDelete = (path: string) => {
   fs.unlink(path, (err) => {
-    if (err) console.error(`Failed to delete file at ${path}:`, err);
+    // Only log error if it is NOT "ENOENT" (File not found)
+    if (err && err.code !== "ENOENT") {
+      console.error(`Failed to delete file at ${path}:`, err);
+    }
   });
 };
 
