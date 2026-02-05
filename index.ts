@@ -52,6 +52,7 @@ const PORT = process.env.PORT || 5000;
     // Add this new route for Bots
     app.get("/share/:id", async (req, res) => {
       try {
+        console.log("hello");
         const postId = req.params.id;
         const post = await Post.findById(postId);
 
