@@ -21,7 +21,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { Post } from "./models/postSchema";
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 
 (async () => {
   try {

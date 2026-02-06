@@ -308,39 +308,102 @@ export const getTrendingPosts = asyncHandler(async (req: Request, res: Response)
   res.status(200).json({ success: true, data: finalPosts });
 });
 
-// 8. Get Posts by Filter (NO PAGINATION)
+// 8. Get Posts by Filter (NO PAGINATION) -- category id
 export const getPostsByFilter = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+
+  // --- Pagination Setup ---
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const skip = (page - 1) * limit;
 
   let filter: any = {};
   let filterType = "all";
   let filterName = "All Posts";
 
+  // --- Identify Filter (Category vs Tag) ---
   if (id !== "all") {
     if (!Types.ObjectId.isValid(id)) throw createError("Invalid ID", 400);
+
+    // Check if it's a Category
     const category = await Category.findById(id);
     if (category) {
       filter.category = category._id;
       filterType = "category";
       filterName = category.name;
     } else {
+      // Check if it's a Tag
       const tag = await Tag.findById(id);
       if (tag) {
         filter.tags = tag._id;
         filterType = "tag";
         filterName = tag.name;
-      } else throw createError("Not found", 404);
+      } else {
+        throw createError("Filter not found", 404);
+      }
     }
   }
 
-  const posts = await Post.find(filter).sort({ createdAt: -1 }).populate("category tags");
+  // --- Execute Queries (Parallel for speed) ---
+  const [posts, totalPosts] = await Promise.all([
+    Post.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("category tags"),
+    Post.countDocuments(filter),
+  ]);
+
+  // --- Calculate Pagination Meta ---
+  const totalPages = Math.ceil(totalPosts / limit);
 
   res.status(200).json({
     success: true,
     data: posts,
-    meta: { filterType, filterName, filterId: id },
+    meta: {
+      filterType,
+      filterName,
+      filterId: id,
+    },
+    pagination: {
+      currentPage: page,
+      totalPages,
+      totalPosts,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+      limit,
+    },
   });
 });
+
+// export const getPostsByFilter = asyncHandler(async (req: Request, res: Response) => {
+//   const { id } = req.params;
+
+//   let filter: any = {};
+//   let filterType = "all";
+//   let filterName = "All Posts";
+
+//   if (id !== "all") {
+//     if (!Types.ObjectId.isValid(id)) throw createError("Invalid ID", 400);
+//     const category = await Category.findById(id);
+//     if (category) {
+//       filter.category = category._id;
+//       filterType = "category";
+//       filterName = category.name;
+//     } else {
+//       const tag = await Tag.findById(id);
+//       if (tag) {
+//         filter.tags = tag._id;
+//         filterType = "tag";
+//         filterName = tag.name;
+//       } else throw createError("Not found", 404);
+//     }
+//   }
+
+//   const posts = await Post.find(filter).sort({ createdAt: -1 }).populate("category tags");
+
+//   res.status(200).json({
+//     success: true,
+//     data: posts,
+//     meta: { filterType, filterName, filterId: id },
+//   });
+// });
 
 // 9. Get Breaking News
 export const getBreakingNews = asyncHandler(async (req: Request, res: Response) => {
