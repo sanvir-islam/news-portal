@@ -220,7 +220,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   // 2. Calculate how many documents to skip
   const skip = (page - 1) * limit;
 
-  // 3. Fetch data and total count in parallel (Faster!) -
+  // 3. Fetch data and total count in parallel (Faster!)
   const [posts, totalPosts] = await Promise.all([
     Post.find()
       .sort({ createdAt: -1 }) // Always latest first
