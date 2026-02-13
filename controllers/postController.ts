@@ -211,11 +211,41 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({ success: true, data: post });
 });
 
-// 5. Get All Posts (NO PAGINATION)
+// 5. Get All Posts (WITH PAGINATION)
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
-  const posts = await Post.find().sort({ createdAt: -1 }).populate("category tags");
+  // 1. Get query params with safe defaults (Page 1, Limit 10)
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
 
-  res.status(200).json({ success: true, count: posts.length, data: posts });
+  // 2. Calculate how many documents to skip
+  const skip = (page - 1) * limit;
+
+  // 3. Fetch data and total count in parallel (Faster!)
+  const [posts, totalPosts] = await Promise.all([
+    Post.find()
+      .sort({ createdAt: -1 }) // Always latest first
+      .skip(skip)
+      .limit(limit)
+      .populate("category tags"),
+    Post.countDocuments(),
+  ]);
+
+  // 4. Calculate pagination metadata
+  const totalPages = Math.ceil(totalPosts / limit);
+
+  // 5. Send Response
+  res.status(200).json({
+    success: true,
+    data: posts,
+    pagination: {
+      currentPage: page,
+      totalPages,
+      totalPosts,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+      limit,
+    },
+  });
 });
 
 // 6. Search Posts (NO PAGINATION)
