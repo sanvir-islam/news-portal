@@ -211,7 +211,7 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({ success: true, data: post });
 });
 
-// 5. Get All Posts (WITH PAGINATION)
+// 5. Get All Posts (WITH PAGINATION) --
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   // 1. Get query params with safe defaults (Page 1, Limit 10)
   const page = parseInt(req.query.page as string) || 1;
