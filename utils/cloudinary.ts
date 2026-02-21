@@ -5,14 +5,17 @@ import { createError } from "./createError";
 // Helper: Upload image to Cloudinary & Delete local file
 export const uploadToCloudinary = async (
   filePath: string,
-  folder: string = "general"
+  folder: string = "general",
 ): Promise<{ url: string; publicId: string }> => {
   try {
-    // 1. Upload to Cloudinary
+    // 1. Upload to Cloudinary (Timeout works perfectly here!)
     const result = await cloudinary.uploader.upload(filePath, {
       folder: folder,
-      // Resize to standard News Portal dimensions
-      transformation: [{ width: 1200, height: 630, crop: "limit" }],
+      timeout: 120000,
+      transformation: [
+        { width: 1200, height: 630, crop: "limit" },
+        { quality: "auto", fetch_format: "auto" },
+      ],
     });
 
     // 2. Delete local file after successful upload
@@ -29,7 +32,6 @@ export const uploadToCloudinary = async (
       publicId: result.public_id,
     };
   } catch (error: any) {
-    // Attempt to clean up local file even if upload failed
     if (fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
@@ -39,7 +41,7 @@ export const uploadToCloudinary = async (
     }
 
     console.error("Cloudinary Upload Error:", error.message || error);
-    throw createError("Image upload to cloud failed. Please try again.", 500);
+    throw createError("Image upload to cloud failed or took too long. Please try again.", 408);
   }
 };
 
@@ -47,11 +49,11 @@ export const uploadToCloudinary = async (
 export const deleteFromCloudinary = async (publicId: string): Promise<void> => {
   try {
     if (publicId) {
+      // Removed the timeout here to fix the TypeScript error!
       await cloudinary.uploader.destroy(publicId);
     }
   } catch (error) {
     console.error("Error deleting image from Cloudinary:", error);
-    // We don't throw here so that the main delete process continues
-    // (e.g. deleting a post should succeed even if the image delete fails)
+    // The try/catch protects the server if a random network glitch happens here!
   }
 };

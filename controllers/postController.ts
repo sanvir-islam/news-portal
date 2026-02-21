@@ -180,14 +180,21 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
   let imageData = oldPost.image;
   let newImageUploaded = false;
 
-  try {
-    if (file) {
+  // --- 🛡️ THE FIX: Protected Cloudinary Upload for Updates ---
+  if (file) {
+    try {
       imageData = await uploadToCloudinary(file.path, "news-posts");
       newImageUploaded = true;
       updateData.image = imageData;
-      if (file) safeDelete(file.path);
+      safeDelete(file.path); // Delete local file on success
+    } catch (uploadError) {
+      safeDelete(file.path); // Delete local file even if Cloudinary times out!
+      throw createError("Image upload took too long. Please ensure the image is under 2MB and try again.", 408);
     }
+  }
+  // -----------------------------------------------------------
 
+  try {
     const updatedPost = await Post.findByIdAndUpdate(postId, updateData, { new: true, runValidators: true })
       .populate("category", "name slug")
       .populate("tags", "name");
@@ -196,14 +203,15 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
       if (updatedPost) await addToBreakingNewsList(updatedPost._id as Types.ObjectId);
     }
 
+    // If a new image was successfully uploaded, delete the OLD image from Cloudinary
     if (newImageUploaded && oldPost.image?.publicId) {
       await deleteFromCloudinary(oldPost.image.publicId);
     }
 
     res.status(200).json({ success: true, message: "Post updated", data: updatedPost });
   } catch (error) {
+    // Rollback: If DB update fails, delete the newly uploaded image from Cloudinary
     if (newImageUploaded && imageData.publicId) await deleteFromCloudinary(imageData.publicId);
-    if (file) safeDelete(file.path);
     throw error;
   }
 });
