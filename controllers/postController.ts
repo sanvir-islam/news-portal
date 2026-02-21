@@ -105,14 +105,25 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
   }
 
   if (!file) throw createError("Image file is required", 400);
+
   const categoryExists = await Category.findById(category);
   if (!categoryExists) {
     if (file) safeDelete(file.path);
     throw createError("Invalid Category ID", 400);
   }
 
-  const imageData = await uploadToCloudinary(file.path, "news-posts");
-  if (file) safeDelete(file.path);
+  // --- 🛡️ THE FIX: Protected Cloudinary Upload ---
+  let imageData;
+  try {
+    imageData = await uploadToCloudinary(file.path, "news-posts");
+    // Only delete local file if upload was successful
+    if (file) safeDelete(file.path);
+  } catch (uploadError) {
+    // If Cloudinary times out, STILL delete the local file so the VPS stays clean!
+    if (file) safeDelete(file.path);
+    throw createError("Image upload took too long. Please ensure the image is under 2MB and try again.", 408);
+  }
+  // ----------------------------------------------
 
   try {
     const tagIds = await processTags(tags);
@@ -132,7 +143,10 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
 
     res.status(201).json({ success: true, message: "Post created", data: post });
   } catch (error) {
-    await deleteFromCloudinary(imageData.publicId);
+    // Rollback: Delete image from Cloudinary if DB save fails
+    if (imageData && imageData.publicId) {
+      await deleteFromCloudinary(imageData.publicId);
+    }
     throw error;
   }
 });
