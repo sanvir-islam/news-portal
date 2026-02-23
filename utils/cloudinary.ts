@@ -32,6 +32,7 @@ export const uploadToCloudinary = async (
       publicId: result.public_id,
     };
   } catch (error: any) {
+    // 1. Clean up the local file
     if (fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
@@ -40,7 +41,16 @@ export const uploadToCloudinary = async (
       }
     }
 
-    console.error("Cloudinary Upload Error:", error.message || error);
+    // 2. SIMPLE LOGGING: Tell the difference between a normal timeout and a real crash
+    if (error.http_code === 499 || error.name === "TimeoutError") {
+      console.log("⚠️ NORMAL TIMEOUT: A heavy image upload was safely cancelled by the server. (No action needed)");
+    } else {
+      console.error(
+        "❌ REAL PROBLEM: Cloudinary is broken! Check your API keys or internet limit:",
+        error.message || error,
+      );
+    }
+
     throw createError("Image upload to cloud failed or took too long. Please try again.", 408);
   }
 };
