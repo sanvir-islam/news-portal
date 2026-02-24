@@ -31,16 +31,18 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw createError("JWT_SECRET environment variable is not defined", 500);
   }
 
+  // 👇 CHANGED: Token expires in 30 days
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: "365d",
+    expiresIn: "30d",
   });
 
   // Set Cookie
+  // 👇 CHANGED: Browser deletes cookie after 30 days
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "none",
-    maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
   });
 
   res.status(200).json({
@@ -56,7 +58,7 @@ export const requestVerification = asyncHandler(async (req: Request, res: Respon
   if (!email) throw createError("Email is required.", 400);
 
   const admin = await Admin.findOne({ email }).select(
-    "+otp +otpExpiry +otpAttempts +lastOtpRequest +lockedUntil +resetSessionActive +resetSessionExpiry +otpVerified"
+    "+otp +otpExpiry +otpAttempts +lastOtpRequest +lockedUntil +resetSessionActive +resetSessionExpiry +otpVerified",
   );
 
   if (!admin) throw createError("Admin not found.", 404);
@@ -71,7 +73,7 @@ export const requestVerification = asyncHandler(async (req: Request, res: Respon
   if (admin.otpVerified && admin.resetSessionActive) {
     throw createError(
       "You are already verified and your reset session is still valid. Please go to the resetPassword page.",
-      400
+      400,
     );
   }
 
@@ -83,7 +85,7 @@ export const requestVerification = asyncHandler(async (req: Request, res: Respon
         `Please wait ${60 - Math.floor(timeSinceLastRequest)} second${
           timeSinceLastRequest > 1 ? "s" : ""
         } before requesting a new OTP.`,
-        429
+        429,
       );
     }
   }
@@ -118,7 +120,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   if (!email || !otp) throw createError("Email and OTP are required.", 400);
 
   const admin = await Admin.findOne({ email }).select(
-    "+otp +otpExpiry +otpAttempts +lastOtpRequest +lockedUntil +resetSessionActive +resetSessionExpiry +otpVerified"
+    "+otp +otpExpiry +otpAttempts +lastOtpRequest +lockedUntil +resetSessionActive +resetSessionExpiry +otpVerified",
   );
 
   if (!admin) throw createError("Admin not found.", 404);
@@ -214,10 +216,14 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
   }
 
   // Update Password
-  admin.password = password; // Assuming your Model has a "pre-save" hook to Hash this!
+  admin.password = password;
   admin.resetSessionActive = false;
   admin.resetSessionExpiry = null;
-  admin.otpVerified = false; // Reset verification status
+  admin.otpVerified = false;
+
+  // RECORD PASSWORD CHANGE TIME
+  // Important: Convert to slightly past the current time to account for exact second collisions
+  admin.passwordChangedAt = new Date(Date.now() - 1000);
 
   await admin.save();
 
@@ -314,9 +320,20 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   if (!isMatch) throw createError("Incorrect current password", 401);
 
   admin.password = newPassword;
+
+  // RECORD PASSWORD CHANGE TIME
+  admin.passwordChangedAt = new Date(Date.now() - 1000);
+
   await admin.save();
 
-  res.status(200).json({ success: true, message: "Password changed successfully" });
+  // CLEAR COOKIE TO LOGOUT CURRENT DEVICE
+  res.clearCookie("accessToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "none",
+  });
+
+  res.status(200).json({ success: true, message: "Password changed successfully. Please log in again." });
 });
 
 // 9. NEW: UPDATE USERNAME

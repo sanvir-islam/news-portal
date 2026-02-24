@@ -6,7 +6,10 @@ export interface IAdmin extends Document {
   email: string;
   password: string;
 
-  // NEW: Social Links
+  // NEW: Password change tracking
+  passwordChangedAt?: Date;
+
+  // Social Links
   socialLinks: {
     facebook?: string;
     twitter?: string;
@@ -52,7 +55,10 @@ const adminSchema = new Schema<IAdmin>(
       select: false,
     },
 
-    // NEW: Social Links (Optional)
+    // NEW: Password change tracking
+    passwordChangedAt: { type: Date, select: false },
+
+    // Social Links (Optional)
     socialLinks: {
       facebook: { type: String, trim: true, default: "" },
       twitter: { type: String, trim: true, default: "" },
@@ -79,6 +85,7 @@ const adminSchema = new Schema<IAdmin>(
     toJSON: {
       transform: function (doc, ret: any) {
         delete ret.password;
+        delete ret.passwordChangedAt; // Hide this field too
         delete ret.otp;
         delete ret.otpExpiry;
         delete ret.otpAttempts;
@@ -91,14 +98,17 @@ const adminSchema = new Schema<IAdmin>(
         return ret;
       },
     },
-  }
+  },
 );
 
 // Password and OTP hashing middleware
 adminSchema.pre("save", async function (next) {
   if (!this.isModified("password") && !this.isModified("otp")) return next();
   try {
-    if (this.isModified("password")) this.password = await bcrypt.hash(this.password, 10);
+    if (this.isModified("password")) {
+      // If password is modified, hash it.
+      this.password = await bcrypt.hash(this.password, 10);
+    }
     if (this.otp && this.isModified("otp")) this.otp = await bcrypt.hash(this.otp, 10);
     next();
   } catch (error: any) {

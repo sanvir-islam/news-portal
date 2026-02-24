@@ -30,10 +30,21 @@ export const verifyAuthToken = async (req: Request, res: Response, next: NextFun
 
     // 4. SECURITY FIX: Check if user still exists in DB!
     // This prevents deleted admins from accessing the system using an old token.
-    const adminExists = await Admin.findById(decoded.id);
+    // We MUST use .select("+passwordChangedAt") because we set select: false in the schema
+    const adminExists = await Admin.findById(decoded.id).select("+passwordChangedAt");
 
     if (!adminExists) {
       return next(createError("Account access revoked. Please contact support.", 403));
+    }
+
+    // TIMESTAMP CHECK
+    if (adminExists.passwordChangedAt) {
+      const changedTimestamp = parseInt((adminExists.passwordChangedAt.getTime() / 1000).toString(), 10);
+
+      // If token was issued BEFORE password was changed, reject it
+      if (decoded.iat < changedTimestamp) {
+        return next(createError("Password was recently changed. Please log in again.", 401));
+      }
     }
 
     // Attach user to request
