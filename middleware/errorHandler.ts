@@ -52,14 +52,15 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   // 3. FILE UPLOAD ERRORS (MULTER)
   // =========================================================
 
-  if (err instanceof MulterError) {
-    statusCode = 400; // This changes the status from 500 to 400!
+  // 🌟 FIX: Bulletproof check using the exact string code
+  if (err.name === "MulterError" || err.code === "LIMIT_FILE_SIZE") {
+    statusCode = 400;
     if (err.code === "LIMIT_FILE_SIZE") {
-      message = "File size too large. Maximum size is 2MB."; // Fixed to match your 2MB limit
+      message = "File size too large. Maximum size is 2MB.";
     } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
       message = "Unexpected field name or too many files uploaded.";
     } else {
-      message = err.message;
+      message = err.message || "File upload error";
     }
   }
 

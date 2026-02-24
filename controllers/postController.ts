@@ -120,7 +120,7 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
   } catch (uploadError) {
     // If Cloudinary times out, STILL delete the local file so the VPS stays clean!
     if (file) safeDelete(file.path);
-    throw createError("Image upload took too long. Please ensure the image is under 2MB and try again.", 408);
+    throw createError("Image upload to cloud failed. Please check your connection and try again.", 408);
   }
   // ----------------------------------------------
 
@@ -188,7 +188,7 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
       // ✅ REDUNDANT DELETE REMOVED: uploadToCloudinary handles the local cleanup on success.
     } catch (uploadError) {
       if (file) safeDelete(file.path); // Delete local file even if Cloudinary times out!
-      throw createError("Image upload took too long. Please ensure the image is under 2MB and try again.", 408);
+      throw createError("Image upload to cloud failed. Please check your connection and try again.", 408);
     }
   }
   // -----------------------------------------------------------

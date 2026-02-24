@@ -11,11 +11,7 @@ export const uploadToCloudinary = async (
     // 1. Upload to Cloudinary (Timeout works perfectly here!)
     const result = await cloudinary.uploader.upload(filePath, {
       folder: folder,
-      timeout: 120000,
-      transformation: [
-        { width: 1200, height: 630, crop: "limit" },
-        { quality: "auto", fetch_format: "auto" },
-      ],
+      timeout: 60000,
     });
 
     // 2. Delete local file after successful upload
