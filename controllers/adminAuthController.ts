@@ -31,13 +31,13 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw createError("JWT_SECRET environment variable is not defined", 500);
   }
 
-  // 👇 CHANGED: Token expires in 30 days
+  // Token expires in 30 days
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: "30d",
   });
 
   // Set Cookie
-  // 👇 CHANGED: Browser deletes cookie after 30 days
+  // Browser deletes cookie after 30 days
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -69,8 +69,13 @@ export const requestVerification = asyncHandler(async (req: Request, res: Respon
     throw createError(`Account is locked. Try again after ${remainingTime} minutes.`, 403);
   }
 
-  // Check if already verified & session active (Prevent spamming if already ready to reset)
-  if (admin.otpVerified && admin.resetSessionActive) {
+  // 🌟 FIX: Check if already verified AND session is STILL VALID (within 15 mins)
+  if (
+    admin.otpVerified &&
+    admin.resetSessionActive &&
+    admin.resetSessionExpiry &&
+    admin.resetSessionExpiry > new Date()
+  ) {
     throw createError(
       "You are already verified and your reset session is still valid. Please go to the resetPassword page.",
       400,
@@ -125,7 +130,10 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
 
   if (!admin) throw createError("Admin not found.", 404);
 
-  if (admin.otpVerified) throw createError("You are already verified", 400);
+  // 🌟 FIX: If already verified and session is still valid, don't let them re-verify
+  if (admin.otpVerified && admin.resetSessionExpiry && admin.resetSessionExpiry > new Date()) {
+    throw createError("You are already verified. Please proceed to reset your password.", 400);
+  }
 
   // Check Reset Session existence
   if (!admin.resetSessionActive) {
@@ -235,15 +243,12 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 
 // 5. LOGOUT
 export const logout = (req: Request, res: Response) => {
-  // Option 1: Clear with your specific settings (The standard way)
   res.clearCookie("accessToken", {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === "production", // Matches login exactly!
     sameSite: "none",
     path: "/",
   });
-
-  res.clearCookie("accessToken");
 
   res.status(200).json({
     success: true,
@@ -321,31 +326,34 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 
   admin.password = newPassword;
 
-  // RECORD PASSWORD CHANGE TIME
+  // RECORD PASSWORD CHANGE TIME (1 second ago to ensure new token is newer)
   admin.passwordChangedAt = new Date(Date.now() - 1000);
 
   await admin.save();
 
-  // CLEAR COOKIE TO LOGOUT CURRENT DEVICE
-  res.clearCookie("accessToken", {
+  // 🌟 GENERATE NEW TOKEN FOR THIS DEVICE (Keeps current user inside the dashboard)
+  const payload = { id: admin._id, email: admin.email, username: admin.username };
+
+  const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
+    expiresIn: "30d",
+  });
+
+  // Set the new Cookie (Overwrites the old one)
+  res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "none",
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
-  res.status(200).json({ success: true, message: "Password changed successfully. Please log in again." });
+  res.status(200).json({ success: true, message: "Password changed successfully." });
 });
 
 // 9. NEW: UPDATE USERNAME
 export const updateUsername = asyncHandler(async (req: Request, res: Response) => {
   const { username } = req.body;
 
-  if (!username) {
-    throw createError("Username is required", 400);
-  }
-
-  // Validation matching schema rules
-  if (username.length < 2 || username.length > 30) {
+  if (!username || username.length < 2 || username.length > 30) {
     throw createError("Username must be between 2 and 30 characters", 400);
   }
 
@@ -354,6 +362,17 @@ export const updateUsername = asyncHandler(async (req: Request, res: Response) =
 
   admin.username = username;
   await admin.save();
+
+  // 🌟 FIX: Generate a fresh token so the payload has the NEW username!
+  const payload = { id: admin._id, email: admin.email, username: admin.username };
+  const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: "30d" });
+
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "none",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
 
   res.status(200).json({
     success: true,

@@ -116,8 +116,7 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
   let imageData;
   try {
     imageData = await uploadToCloudinary(file.path, "news-posts");
-    // Only delete local file if upload was successful
-    if (file) safeDelete(file.path);
+    // ✅ REDUNDANT DELETE REMOVED: uploadToCloudinary handles the local cleanup on success.
   } catch (uploadError) {
     // If Cloudinary times out, STILL delete the local file so the VPS stays clean!
     if (file) safeDelete(file.path);
@@ -186,9 +185,9 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
       imageData = await uploadToCloudinary(file.path, "news-posts");
       newImageUploaded = true;
       updateData.image = imageData;
-      safeDelete(file.path); // Delete local file on success
+      // ✅ REDUNDANT DELETE REMOVED: uploadToCloudinary handles the local cleanup on success.
     } catch (uploadError) {
-      safeDelete(file.path); // Delete local file even if Cloudinary times out!
+      if (file) safeDelete(file.path); // Delete local file even if Cloudinary times out!
       throw createError("Image upload took too long. Please ensure the image is under 2MB and try again.", 408);
     }
   }
