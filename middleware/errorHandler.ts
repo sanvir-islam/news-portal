@@ -5,11 +5,6 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   let statusCode = err.statusCode || 500;
   let message = err.message || "Something went wrong.";
 
-  // 🌟 FIX: Always log 500 errors so you aren't flying blind in production!
-  if (statusCode === 500) {
-    console.error("🔥 [Server Error]: ", err);
-  }
-
   // =========================================================
   // 1. MONGOOSE / DATABASE ERRORS
   // =========================================================
@@ -58,11 +53,10 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   // =========================================================
 
   if (err instanceof MulterError) {
-    statusCode = 400;
+    statusCode = 400; // This changes the status from 500 to 400!
     if (err.code === "LIMIT_FILE_SIZE") {
-      message = "File size too large. Maximum size is 5MB.";
+      message = "File size too large. Maximum size is 2MB."; // Fixed to match your 2MB limit
     } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
-      // 🌟 FIX: Correct error meaning
       message = "Unexpected field name or too many files uploaded.";
     } else {
       message = err.message;
@@ -75,6 +69,14 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
 
   if (statusCode === 429) {
     message = "Too many requests. Please try again later.";
+  }
+
+  // =========================================================
+  // 🌟 FIX: LOGGING MOVED TO THE BOTTOM
+  // Now it will ONLY log actual 500 crashes, ignoring the 400 user errors above!
+  // =========================================================
+  if (statusCode === 500) {
+    console.error("🔥 [Server Error]: ", err);
   }
 
   // =========================================================
