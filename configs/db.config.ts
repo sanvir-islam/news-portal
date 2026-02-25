@@ -15,7 +15,7 @@ export const dbConnect = async (): Promise<void> => {
       socketTimeoutMS: 45000, 
       
       // 👇 THE FIX FOR EAI_AGAIN & TIMEOUTS 👇
-      serverSelectionTimeoutMS: 5000, // Don't hang forever if the network drops
+      serverSelectionTimeoutMS: 15000, // Don't hang forever if the network drops
       family: 4, // Force IPv4. This is the magic fix for Node.js DNS EAI_AGAIN errors!
     });
 
