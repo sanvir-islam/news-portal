@@ -28,8 +28,8 @@ const postViewSchema = new Schema<IPostView>(
   }
 );
 
-// 1. Uniqueness Check (Used by Middleware)
-postViewSchema.index({ post: 1, ip: 1, userAgent: 1 });
+// 1. Unused Uniqueness Check (Removed to speed up background writes)
+// postViewSchema.index({ post: 1, ip: 1, userAgent: 1 });
 
 // 2. Dashboard Performance (CRITICAL ADDITION)
 // This makes queries like "Get total views for last 24h" instant.
