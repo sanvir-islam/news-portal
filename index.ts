@@ -1,16 +1,14 @@
-// 🛡️ 1. GLOBAL CRASH NETS (Must be at the very top!)
-// Catches sync errors that bypass your try/catch blocks
+// 🛡️ 1. GLOBAL CRASH NETS
 process.on("uncaughtException", (err) => {
-  console.error("🔥 UNCAUGHT EXCEPTION! Shutting down gracefully...");
+  console.error("🔥 UNCAUGHT EXCEPTION! (App will stay alive)");
   console.error(err.name, err.message, err.stack);
-  process.exit(1); // PM2 will instantly restart the app
+  // process.exit(1); <-- REMOVED so PM2 stops looping
 });
 
-// Catches async Promise rejections that you forgot to await/catch
 process.on("unhandledRejection", (err: any) => {
-  console.error("🔥 UNHANDLED REJECTION! Shutting down gracefully...");
+  console.error("🔥 UNHANDLED REJECTION! (App will stay alive)");
   console.error(err.name, err.message, err.stack);
-  process.exit(1); // PM2 will instantly restart the app
+  // process.exit(1); <-- REMOVED so PM2 stops looping
 });
 
 // 2. Load dotenv FIRST
