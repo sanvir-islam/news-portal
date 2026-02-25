@@ -11,6 +11,8 @@ export interface IPost extends Document {
   subCategory?: Types.ObjectId;
   tags: Types.ObjectId[];
   views: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const postSchema = new Schema<IPost>(
@@ -41,12 +43,10 @@ const postSchema = new Schema<IPost>(
       type: Schema.Types.ObjectId,
       ref: "Category",
       required: [true, "Category is required"],
-      index: true,
     },
     subCategory: {
       type: Schema.Types.ObjectId,
       ref: "SubCategory",
-      index: true,
     },
     tags: [
       {
@@ -71,10 +71,21 @@ const postSchema = new Schema<IPost>(
   }
 );
 
-// --- INDEXES ---
+// --- ⚡ PERFORMANCE INDEXES FOR ATLAS ⚡ ---
+
+// 1. Sort by newest (Powers your main homepage feed)
 postSchema.index({ createdAt: -1 });
 
-// IMPORTANT: Kept the Text Index for your Search Controller
+// 2. Filter by Category AND sort by newest (Powers your category pages)
+postSchema.index({ category: 1, createdAt: -1 });
+
+// 3. Filter by SubCategory AND sort by newest
+postSchema.index({ subCategory: 1, createdAt: -1 });
+
+// 4. Filter by Tag AND sort by newest (Powers your tag pages)
+postSchema.index({ tags: 1, createdAt: -1 });
+
+// 5. Full-Text Search (Powers your search bar controller)
 postSchema.index({ title: "text", content: "text" });
 
 export const Post = mongoose.model<IPost>("Post", postSchema);

@@ -4,16 +4,19 @@ import mongoose from "mongoose";
 import { Post } from "../models/postSchema";
 import { PostView } from "../models/postViewSchema";
 
-// NOTE: We removed 'asyncHandler' because this function is now SYNCHRONOUS.
-// It calls next() immediately and runs the DB logic in the background.
+// 🛡️ THE IN-MEMORY BOT SHIELD
+// This remembers who viewed what without asking MongoDB.
+// Key format: "IP_POSTID", Value: Timestamp
+const viewCache = new Map<string, number>();
+
+// Clean the cache every 6 hours so it doesn't eat your server's RAM
+setInterval(() => {
+  viewCache.clear();
+}, 6 * 60 * 60 * 1000);
 
 export const trackPostView = (req: Request, res: Response, next: NextFunction) => {
-  // ==========================================
-  // 1. EXTRACT DATA (Fast & Synchronous)
-  // ==========================================
   const postId = req.params.id || req.params.postId;
 
-  // Safety: If ID is invalid, skip tracking
   if (!postId || !mongoose.isValidObjectId(postId)) {
     return next();
   }
@@ -21,49 +24,43 @@ export const trackPostView = (req: Request, res: Response, next: NextFunction) =
   const userAgent = req.headers["user-agent"] || "unknown";
   let clientIp = requestIp.getClientIp(req) || "unknown";
 
-  // Normalize IP
   if (clientIp === "::1") clientIp = "127.0.0.1";
   if (clientIp.startsWith("::ffff:")) clientIp = clientIp.replace("::ffff:", "");
 
   // ==========================================
-  // 2. THE FIX: FIRE-AND-FORGET
+  // 1. CHECK RAM CACHE FIRST (0 DB Queries!)
   // ==========================================
-  // We call next() INSTANTLY. The user sees the page immediately.
-  // We do NOT wait for the database here.
+  const cacheKey = `${clientIp}_${postId}`;
+  const lastViewed = viewCache.get(cacheKey);
+  const now = Date.now();
+
+  // If this IP viewed this exact post in the last 24 hours, IGNORE COMPLETELY.
+  if (lastViewed && (now - lastViewed < 24 * 60 * 60 * 1000)) {
+    return next(); // Bot gets stopped here. MongoDB is completely safe!
+  }
+
+  // Record the view in our RAM cache instantly
+  viewCache.set(cacheKey, now);
+
+  // Send the user to the article instantly
   next();
 
   // ==========================================
-  // 3. BACKGROUND WORKER
+  // 2. BACKGROUND DB WRITE
   // ==========================================
-  // This logic runs in the "background" while the user reads the post.
   (async () => {
     try {
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-      // Check Uniqueness (Read)
-      const existingView = await PostView.findOne({
-        post: postId,
-        ip: clientIp,
-        userAgent: userAgent,
-        createdAt: { $gte: twentyFourHoursAgo },
-      });
-
-      // If Unique, Write to DB
-      if (!existingView) {
-        await Promise.all([
-          // Log for Dashboard
-          PostView.create({
-            post: postId,
-            ip: clientIp,
-            userAgent: userAgent,
-          }),
-          // Increment Public Counter
-          Post.findByIdAndUpdate(postId, { $inc: { views: 1 } }),
-        ]);
-      }
+      // Because our RAM cache handled the uniqueness check, 
+      // we completely removed the expensive 'PostView.findOne' query!
+      await Promise.all([
+        PostView.create({
+          post: postId,
+          ip: clientIp,
+          userAgent: userAgent,
+        }),
+        Post.findByIdAndUpdate(postId, { $inc: { views: 1 } }),
+      ]);
     } catch (error) {
-      // SILENT FAIL: If this fails, we just log it.
-      // The user's experience is not interrupted.
       console.error("Background View Tracking Error:", error);
     }
   })();
