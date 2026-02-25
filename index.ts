@@ -1,8 +1,23 @@
-// 1. Load dotenv FIRST
+// 🛡️ 1. GLOBAL CRASH NETS (Must be at the very top!)
+// Catches sync errors that bypass your try/catch blocks
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION! Shutting down gracefully...");
+  console.error(err.name, err.message, err.stack);
+  process.exit(1); // PM2 will instantly restart the app
+});
+
+// Catches async Promise rejections that you forgot to await/catch
+process.on("unhandledRejection", (err: any) => {
+  console.error("🔥 UNHANDLED REJECTION! Shutting down gracefully...");
+  console.error(err.name, err.message, err.stack);
+  process.exit(1); // PM2 will instantly restart the app
+});
+
+// 2. Load dotenv FIRST
 import dotenv from "dotenv";
 dotenv.config();
 
-// 2. Validate Env
+// 3. Validate Env
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { validateEnv } = require("./utils/validateEnv");
@@ -11,7 +26,7 @@ try {
   console.warn("⚠️ Env validation warning:", err.message);
 }
 
-// 3. Imports
+// 4. Imports
 import express, { Request, Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -21,7 +36,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import botRoutes from "./routes/bot";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4500;
 
 (async () => {
   try {
@@ -58,10 +73,20 @@ const PORT = process.env.PORT || 4000;
     await dbConnect();
 
     // --- START SERVER ---
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
     });
+
+    // Optional: Graceful shutdown on server termination signals (e.g., when PM2 stops/restarts the app)
+    process.on("SIGTERM", () => {
+      console.log("👋 SIGTERM received. Shutting down gracefully...");
+      server.close(() => {
+        console.log("💥 Process terminated.");
+      });
+    });
+
   } catch (error) {
     console.error("❌ Critical Startup Error:", error);
+    process.exit(1);
   }
 })();

@@ -162,7 +162,7 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
     throw createError("Post not found", 404);
   }
 
-  const updateData: any = {};
+  const updateData: any = {}; 
   if (title) {
     if (title.length < 10) throw createError("Title must be 10+ chars", 400);
     updateData.title = title;
