@@ -13,10 +13,8 @@ export const dbConnect = async (): Promise<void> => {
       maxPoolSize: 10, 
       minPoolSize: 2, 
       socketTimeoutMS: 45000, 
-      
-      // 👇 THE FIX FOR EAI_AGAIN & TIMEOUTS 👇
-      serverSelectionTimeoutMS: 15000, // Don't hang forever if the network drops
-      family: 4, // Force IPv4. This is the magic fix for Node.js DNS EAI_AGAIN errors!
+      serverSelectionTimeoutMS: 15000, 
+      family: 4, // Force IPv4 to prevent DNS EAI_AGAIN errors
     });
 
     console.log("✅ Database connected successfully");
@@ -27,8 +25,6 @@ export const dbConnect = async (): Promise<void> => {
 };
 
 // 👇 AUTO-RECONNECT SAFETY NETS 👇
-// These listen quietly in the background. If your VPS loses internet for 5 seconds, 
-// Mongoose won't crash the app; it will just wait and reconnect automatically.
 mongoose.connection.on("disconnected", () => {
   console.warn("⚠️ MongoDB connection lost! Waiting for network to return...");
 });
@@ -38,5 +34,5 @@ mongoose.connection.on("reconnected", () => {
 });
 
 mongoose.connection.on("error", (err) => {
-  console.error("🔥 MongoDB background error:", err);
+  console.error("🔥 MongoDB background error:", err.message);
 });

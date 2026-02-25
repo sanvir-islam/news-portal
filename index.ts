@@ -1,14 +1,14 @@
 // 🛡️ 1. GLOBAL CRASH NETS
 process.on("uncaughtException", (err) => {
-  console.error("🔥 UNCAUGHT EXCEPTION! (App will stay alive)");
+  console.error("🔥 UNCAUGHT EXCEPTION! Shutting down...");
   console.error(err.name, err.message, err.stack);
-  // process.exit(1); <-- REMOVED so PM2 stops looping
+  process.exit(1); // PM2 will safely restart a fresh, healthy instance!
 });
 
 process.on("unhandledRejection", (err: any) => {
-  console.error("🔥 UNHANDLED REJECTION! (App will stay alive)");
+  console.error("🔥 UNHANDLED REJECTION! Shutting down...");
   console.error(err.name, err.message, err.stack);
-  // process.exit(1); <-- REMOVED so PM2 stops looping
+  process.exit(1); // PM2 will safely restart a fresh, healthy instance!
 });
 
 // 2. Load dotenv FIRST
