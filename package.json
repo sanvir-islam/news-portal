@@ -12,6 +12,7 @@
     "seed": "ts-node utils/seed.ts"
   },
   "dependencies": {
+    "typescript": "^5.9.3",
     "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",
     "cookie-parser": "^1.4.7",
@@ -40,7 +41,6 @@
     "@types/request-ip": "^0.0.41",
     "@types/uuid": "^9.0.8",
     "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "ts-node": "^10.9.2"
   }
 }

@@ -15,25 +15,30 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # 🛑 0. STRICT MODE: Stop instantly if any command fails
             set -e 
 
-            # 1. Load NVM (Node Version Manager) so npm works
+            # 1. Load Environment
             export NVM_DIR=~/.nvm
             source ~/.nvm/nvm.sh
 
-            # 2. Go to folder
+            # 2. Navigate to Project
             cd ~/news-portal
 
-            # 3. UPDATE CODE (Aggressive Force Pull)
-            # This throws away any weird local changes on the VPS and forces it to match GitHub
+            # 3. Aggressive Code Update
             git fetch --all
             git reset --hard origin/main
 
-            # 4. Install & Build
-            npm install
+            # 4. 🛡️ Lightweight Production Install
+            # This is critical to save your 2GB RAM
+            npm install --omit=dev
+
+            # 5. ⚡ Build Root Files to /dist
             npm run build
 
-            # 5. Restart
-            pm2 restart news-portal
-            echo "🚀 FULL DEPLOYMENT COMPLETE"
+            # 6. 🚀 Smart Restart
+            # max-memory-restart 1G prevents OOM crashes
+            # restart-delay 3000 gives the OS time to recover after the build
+            pm2 restart news-portal --max-memory-restart 1G --update-env --restart-delay 3000
+            pm2 save
+            
+            echo "🚀 ROOT-LEVEL DEPLOYMENT SUCCESSFUL"
