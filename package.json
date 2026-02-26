@@ -27,7 +27,9 @@
     "request-ip": "^3.3.0",
     "resend": "^6.6.0",
     "uuid": "^9.0.1",
-    "zod": "^4.2.1",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.6",
     "@types/cors": "^2.8.17",
@@ -40,6 +42,5 @@
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
-  },
-  "devDependencies": {}
+  }
 }
