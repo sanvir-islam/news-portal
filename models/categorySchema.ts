@@ -1,5 +1,8 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+/**
+ * Interface representing a Category document
+ */
 export interface ICategory extends Document {
   name: string;
   slug: string;
@@ -9,6 +12,10 @@ export interface ICategory extends Document {
   updatedAt: Date;
 }
 
+/**
+ * Category Schema Definition
+ * Logic: Handles unique categories and automatic slug generation for SEO-friendly URLs.
+ */
 const categorySchema = new Schema<ICategory>(
   {
     name: {
@@ -37,17 +44,20 @@ const categorySchema = new Schema<ICategory>(
   { timestamps: true }
 );
 
-// Pre-save hook to generate Bengali-friendly slugs
+/**
+ * Pre-save Hook: Generates Bengali-friendly SEO slugs
+ * Handles both English and Bengali characters correctly.
+ */
 categorySchema.pre("save", function (next) {
   if (this.isModified("name")) {
     this.slug = this.name
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, "-") // Replace spaces with -
-      .replace(/[^\w\u0980-\u09FF-]+/g, "") // Allow Bengali (\u0980-\u09FF) & English
-      .replace(/\-\-+/g, "-") // Replace multiple - with single -
-      .replace(/^-+/, "") // Trim - from start
-      .replace(/-+$/, ""); // Trim - from end
+      .replace(/\s+/g, "-") // Replace spaces with dashes
+      .replace(/[^\w\u0980-\u09FF-]+/g, "") // Keep English, Bengali, and dashes
+      .replace(/\-\-+/g, "-") // Remove double dashes
+      .replace(/^-+/, "") // Trim leading dash
+      .replace(/-+$/, ""); // Trim trailing dash
   }
   next();
 });

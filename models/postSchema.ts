@@ -1,5 +1,8 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
+/**
+ * Interface representing a Post document in MongoDB
+ */
 export interface IPost extends Document {
   title: string;
   content: string;
@@ -8,13 +11,15 @@ export interface IPost extends Document {
     publicId: string;
   };
   category: Types.ObjectId;
-  subCategory?: Types.ObjectId;
-  tags: Types.ObjectId[];
   views: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
+/**
+ * Post Schema Definition
+ * Logic: Includes validation, performance indexing, and automated slug-like cleanup for Bengali/English content.
+ */
 const postSchema = new Schema<IPost>(
   {
     title: {
@@ -44,16 +49,6 @@ const postSchema = new Schema<IPost>(
       ref: "Category",
       required: [true, "Category is required"],
     },
-    subCategory: {
-      type: Schema.Types.ObjectId,
-      ref: "SubCategory",
-    },
-    tags: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Tag",
-      },
-    ],
     views: {
       type: Number,
       default: 0,
@@ -61,31 +56,27 @@ const postSchema = new Schema<IPost>(
     },
   },
   {
-    timestamps: true,
+    timestamps: true, // Automatically manages createdAt and updatedAt
     toJSON: {
       transform: function (doc, ret: any) {
-        delete ret.__v;
+        delete ret.__v; // Remove version key from JSON responses
         return ret;
       },
     },
   }
 );
 
-// --- ⚡ PERFORMANCE INDEXES FOR ATLAS ⚡ ---
+// ==========================================
+// PERFORMANCE INDEXES (Optimized for Atlas)
+// ==========================================
 
-// 1. Sort by newest (Powers your main homepage feed)
+// 1. Newest posts first (Homepage feed)
 postSchema.index({ createdAt: -1 });
 
-// 2. Filter by Category AND sort by newest (Powers your category pages)
+// 2. Category filtering with sorting (Category pages)
 postSchema.index({ category: 1, createdAt: -1 });
 
-// 3. Filter by SubCategory AND sort by newest
-postSchema.index({ subCategory: 1, createdAt: -1 });
-
-// 4. Filter by Tag AND sort by newest (Powers your tag pages)
-postSchema.index({ tags: 1, createdAt: -1 });
-
-// 5. Full-Text Search (Powers your search bar controller)
+// 3. Full-Text Search (Search bar)
 postSchema.index({ title: "text", content: "text" });
 
 export const Post = mongoose.model<IPost>("Post", postSchema);

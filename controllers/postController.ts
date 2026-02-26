@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { Types } from "mongoose";
 import fs from "fs";
 import { Post } from "../models/postSchema";
-import { Tag } from "../models/tagSchema";
 import { PostView } from "../models/postViewSchema";
 import { BreakingNews } from "../models/breakingNewsSchema";
 import { uploadToCloudinary, deleteFromCloudinary } from "../utils/cloudinary";
@@ -10,13 +9,21 @@ import { createError } from "../utils/createError";
 import Category from "../models/categorySchema";
 import { asyncHandler } from "../utils/asyncHandler";
 
+/**
+ * Custom Request interface to handle Multer files
+ */
 interface CustomRequest extends Request {
   files?: Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] };
 }
 
 // ==========================================
-// INTERNAL HELPER: Add to Breaking News List
+// INTERNAL HELPERS
 // ==========================================
+
+/**
+ * Manages the "Breaking News" list (keeps only the latest 5 posts)
+ * @param postId - ID of the post to add
+ */
 const addToBreakingNewsList = async (postId: Types.ObjectId | string) => {
   let breaking = await BreakingNews.findOne();
   if (!breaking) {
@@ -26,29 +33,28 @@ const addToBreakingNewsList = async (postId: Types.ObjectId | string) => {
   const currentList = breaking.posts.map((p) => p.toString());
   const newId = postId.toString();
 
+  // Move existing post to front or add new one, then limit to 5
   const filteredList = currentList.filter((id) => id !== newId);
   filteredList.unshift(newId);
-
-  const finalList = filteredList.slice(0, 5);
-
-  breaking.posts = finalList as any;
+  breaking.posts = filteredList.slice(0, 5) as any;
+  
   await breaking.save();
 };
 
-// ==========================================
-// OTHER HELPERS
-// ==========================================
-
-// ✅ FIXED: Silent cleanup (No error if file is already gone)
+/**
+ * Safely deletes a file from the local server without throwing errors if it's missing
+ */
 const safeDelete = (path: string) => {
   fs.unlink(path, (err) => {
-    // Only log error if it is NOT "ENOENT" (File not found)
     if (err && err.code !== "ENOENT") {
-      console.error(`Failed to delete file at ${path}:`, err);
+      console.error(`Failed to delete local file: ${path}`, err);
     }
   });
 };
 
+/**
+ * Extracts the uploaded file from the request object (Multer)
+ */
 const getFile = (req: CustomRequest): Express.Multer.File | undefined => {
   if (Array.isArray(req.files) && req.files.length > 0) return req.files[0];
   if (req.files && typeof req.files === "object") {
@@ -58,42 +64,26 @@ const getFile = (req: CustomRequest): Express.Multer.File | undefined => {
   return undefined;
 };
 
-const processTags = async (tags: string | string[]): Promise<Types.ObjectId[]> => {
-  if (!tags) return [];
-  let tagList: string[] = [];
-  if (Array.isArray(tags)) {
-    tagList = tags;
-  } else if (typeof tags === "string") {
-    try {
-      const parsed = JSON.parse(tags);
-      tagList = Array.isArray(parsed) ? parsed : [tags];
-    } catch (error) {
-      tagList = tags.split(",");
-    }
-  }
-  const uniqueNames = [...new Set(tagList.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0))];
-  if (uniqueNames.length === 0) return [];
-  const bulkOps = uniqueNames.map((name) => ({
-    updateOne: { filter: { name }, update: { $set: { name } }, upsert: true },
-  }));
-  if (bulkOps.length > 0) await Tag.bulkWrite(bulkOps);
-  const foundTags = await Tag.find({ name: { $in: uniqueNames } }).select("_id");
-  return foundTags.map((tag) => tag._id as Types.ObjectId);
-};
-
+/**
+ * Escapes special characters for use in Regular Expressions
+ */
 const escapeRegex = (text: string) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 };
 
 // ==========================================
-// CONTROLLERS
+// CORE CONTROLLERS
 // ==========================================
 
-// 1. Create Post
+/**
+ * 1. Create Post
+ * Logic: Validates, uploads image to Cloudinary, saves to DB, and handles breaking news.
+ */
 export const createPost = asyncHandler(async (req: CustomRequest, res: Response) => {
-  const { title, content, category, tags, addToBreaking } = req.body;
+  const { title, content, category, addToBreaking } = req.body;
   const file = getFile(req);
 
+  // Validation
   if (!title || !content || !category) {
     if (file) safeDelete(file.path);
     throw createError("Required fields missing", 400);
@@ -101,7 +91,7 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
 
   if (title.length < 10) {
     if (file) safeDelete(file.path);
-    throw createError("Title must be at least 10 characters long", 400);
+    throw createError("Title must be at least 10 characters", 400);
   }
 
   if (!file) throw createError("Image file is required", 400);
@@ -112,48 +102,38 @@ export const createPost = asyncHandler(async (req: CustomRequest, res: Response)
     throw createError("Invalid Category ID", 400);
   }
 
-  // --- 🛡️ THE FIX: Protected Cloudinary Upload ---
+  // Cloudinary Upload
   let imageData;
   try {
     imageData = await uploadToCloudinary(file.path, "news-posts");
-    // ✅ REDUNDANT DELETE REMOVED: uploadToCloudinary handles the local cleanup on success.
-  } catch (uploadError) {
-    // If Cloudinary times out, STILL delete the local file so the VPS stays clean!
+  } catch (error) {
     if (file) safeDelete(file.path);
-    throw createError("Image upload to cloud failed. Please check your connection and try again.", 408);
+    throw createError("Cloud image upload failed. Please try again.", 408);
   }
-  // ----------------------------------------------
 
   try {
-    const tagIds = await processTags(tags);
-    const post = new Post({
-      title,
-      content,
-      image: imageData,
-      category,
-      tags: tagIds,
-    });
-
+    const post = new Post({ title, content, image: imageData, category });
     await post.save();
 
     if (addToBreaking === "true" || addToBreaking === true) {
       await addToBreakingNewsList(post._id as Types.ObjectId);
     }
 
-    res.status(201).json({ success: true, message: "Post created", data: post });
+    res.status(201).json({ success: true, message: "Post published successfully", data: post });
   } catch (error) {
-    // Rollback: Delete image from Cloudinary if DB save fails
-    if (imageData && imageData.publicId) {
-      await deleteFromCloudinary(imageData.publicId);
-    }
+    // Cleanup: Remove image from Cloud if DB save fails
+    if (imageData?.publicId) await deleteFromCloudinary(imageData.publicId);
     throw error;
   }
 });
 
-// 2. Update Post
+/**
+ * 2. Update Post
+ * Logic: Updates fields, handles image swap (deletes old image), and manages breaking news.
+ */
 export const updatePost = asyncHandler(async (req: CustomRequest, res: Response) => {
   const { postId } = req.params;
-  const { title, content, category, tags, addToBreaking } = req.body;
+  const { title, content, category, addToBreaking } = req.body;
   const file = getFile(req);
 
   const oldPost = await Post.findById(postId);
@@ -169,133 +149,122 @@ export const updatePost = asyncHandler(async (req: CustomRequest, res: Response)
   }
   if (content) updateData.content = content;
   if (category) {
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) throw createError("Invalid Category", 400);
+    if (!(await Category.findById(category))) throw createError("Invalid Category", 400);
     updateData.category = category;
   }
-
-  if (tags) updateData.tags = await processTags(tags);
 
   let imageData = oldPost.image;
   let newImageUploaded = false;
 
-  // --- 🛡️ THE FIX: Protected Cloudinary Upload for Updates ---
+  // Handle Image Update
   if (file) {
     try {
       imageData = await uploadToCloudinary(file.path, "news-posts");
       newImageUploaded = true;
       updateData.image = imageData;
-      // ✅ REDUNDANT DELETE REMOVED: uploadToCloudinary handles the local cleanup on success.
-    } catch (uploadError) {
-      if (file) safeDelete(file.path); // Delete local file even if Cloudinary times out!
-      throw createError("Image upload to cloud failed. Please check your connection and try again.", 408);
+    } catch (error) {
+      if (file) safeDelete(file.path);
+      throw createError("Image upload failed.", 408);
     }
   }
-  // -----------------------------------------------------------
 
   try {
     const updatedPost = await Post.findByIdAndUpdate(postId, updateData, { new: true, runValidators: true })
-      .populate("category", "name slug")
-      .populate("tags", "name");
+      .populate("category", "name slug");
 
     if (addToBreaking === "true" || addToBreaking === true) {
       if (updatedPost) await addToBreakingNewsList(updatedPost._id as Types.ObjectId);
     }
 
-    // If a new image was successfully uploaded, delete the OLD image from Cloudinary
+    // Delete old image if swapped
     if (newImageUploaded && oldPost.image?.publicId) {
       await deleteFromCloudinary(oldPost.image.publicId);
     }
 
     res.status(200).json({ success: true, message: "Post updated", data: updatedPost });
   } catch (error) {
-    // Rollback: If DB update fails, delete the newly uploaded image from Cloudinary
     if (newImageUploaded && imageData.publicId) await deleteFromCloudinary(imageData.publicId);
     throw error;
   }
 });
 
-// 3. Delete Post
+/**
+ * 3. Delete Post
+ * Logic: Deletes post from DB and removes associated image from Cloudinary.
+ */
 export const deletePost = asyncHandler(async (req: Request, res: Response) => {
   const { postId } = req.params;
   const post = await Post.findById(postId);
   if (!post) throw createError("Post not found", 404);
+
   if (post.image?.publicId) await deleteFromCloudinary(post.image.publicId);
   await Post.findByIdAndDelete(postId);
-  res.status(200).json({ success: true, message: "Post deleted" });
+
+  res.status(200).json({ success: true, message: "Post permanently deleted" });
 });
 
-// 4. Get Post By ID
+/**
+ * 4. Get Single Post
+ */
 export const getPostById = asyncHandler(async (req: Request, res: Response) => {
-  const post = await Post.findById(req.params.postId).populate("category tags");
+  const post = await Post.findById(req.params.postId).populate("category", "name slug");
   if (!post) throw createError("Post not found", 404);
   res.status(200).json({ success: true, data: post });
 });
 
-// 5. Get All Posts (WITH PAGINATION)
+/**
+ * 5. Get All Posts (Paginated)
+ * Logic: Uses parallel queries for high-performance data fetching.
+ */
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
-  // 1. Get query params with safe defaults (Page 1, Limit 10)
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
-
-  // 2. Calculate how many documents to skip
   const skip = (page - 1) * limit;
 
-  // 3. Fetch data and total count in parallel (Faster!)
   const [posts, totalPosts] = await Promise.all([
-    Post.find()
-      .sort({ createdAt: -1 }) // Always latest first
-      .skip(skip)
-      .limit(limit)
-      .populate("category tags"),
+    Post.find().sort({ createdAt: -1 }).skip(skip).limit(limit).populate("category", "name slug"),
     Post.countDocuments(),
   ]);
 
-  // 4. Calculate pagination metadata
   const totalPages = Math.ceil(totalPosts / limit);
 
-  // 5. Send Response
   res.status(200).json({
     success: true,
     data: posts,
-    pagination: {
-      currentPage: page,
-      totalPages,
-      totalPosts,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
-      limit,
-    },
+    pagination: { currentPage: page, totalPages, totalPosts, hasNextPage: page < totalPages, limit },
   });
 });
 
-// 6. Search Posts (NO PAGINATION)
+/**
+ * 6. Search Posts
+ * Logic: Implements MongoDB full-text search and category filtering.
+ */
 export const searchPosts = asyncHandler(async (req: Request, res: Response) => {
   const { query, categoryName } = req.query;
-
   const searchFilter: any = {};
 
   if (query) searchFilter.$text = { $search: query as string };
   if (categoryName) {
-    const safeCat = escapeRegex(categoryName as string);
-    const category = await Category.findOne({ name: { $regex: safeCat, $options: "i" } });
+    const category = await Category.findOne({ name: { $regex: escapeRegex(categoryName as string), $options: "i" } });
     if (category) searchFilter.category = category._id;
     else return res.status(200).json({ success: true, data: [] });
   }
 
   let postsQuery = Post.find(searchFilter);
-  if (query) postsQuery = postsQuery.select({ score: { $meta: "textScore" } }).sort({ score: { $meta: "textScore" } });
-  else postsQuery = postsQuery.sort({ createdAt: -1 });
+  if (query) {
+    postsQuery = postsQuery.select({ score: { $meta: "textScore" } }).sort({ score: { $meta: "textScore" } });
+  } else {
+    postsQuery = postsQuery.sort({ createdAt: -1 });
+  }
 
-  const posts = await postsQuery.populate("category tags");
-
-  res.status(200).json({
-    success: true,
-    data: posts,
-  });
+  const posts = await postsQuery.populate("category", "name slug");
+  res.status(200).json({ success: true, data: posts });
 });
 
-// 7. Get Trending Posts
+/**
+ * 7. Get Trending Posts
+ * Logic: Aggregates views from last 24h/7d with a newest-post fallback to ensure 3 results.
+ */
 export const getTrendingPosts = asyncHandler(async (req: Request, res: Response) => {
   const now = new Date();
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -312,9 +281,7 @@ export const getTrendingPosts = asyncHandler(async (req: Request, res: Response)
       { $limit: limit },
       { $lookup: { from: "posts", localField: "_id", foreignField: "_id", as: "postDetails" } },
       { $unwind: "$postDetails" },
-      {
-        $lookup: { from: "categories", localField: "postDetails.category", foreignField: "_id", as: "categoryDetails" },
-      },
+      { $lookup: { from: "categories", localField: "postDetails.category", foreignField: "_id", as: "categoryDetails" } },
       { $unwind: { path: "$categoryDetails", preserveNullAndEmptyArrays: true } },
       {
         $project: {
@@ -330,24 +297,28 @@ export const getTrendingPosts = asyncHandler(async (req: Request, res: Response)
     ]);
   };
 
+  // Step 1: Last 24h
   const trending24h = await fetchTrending(twentyFourHoursAgo, [], 3);
   finalPosts = [...trending24h];
   collectedIds = finalPosts.map((p) => p._id);
 
+  // Step 2: Last 7d (if needed)
   if (finalPosts.length < 3) {
     const trending7d = await fetchTrending(sevenDaysAgo, collectedIds, 3 - finalPosts.length);
     finalPosts = [...finalPosts, ...trending7d];
     collectedIds = finalPosts.map((p) => p._id);
   }
 
+  // Step 3: Fallback to Newest (if needed)
   if (finalPosts.length < 3) {
-    const fallbackPosts = await Post.find({ _id: { $nin: collectedIds } })
+    const fallbacks = await Post.find({ _id: { $nin: collectedIds } })
       .sort({ createdAt: -1 })
       .limit(3 - finalPosts.length)
       .populate("category", "name slug");
+    
     finalPosts = [
       ...finalPosts,
-      ...fallbackPosts.map((p: any) => ({
+      ...fallbacks.map((p: any) => ({
         _id: p._id,
         viewCount: 0,
         postDetails: { title: p.title, image: p.image, createdAt: p.createdAt, slug: p.slug },
@@ -359,129 +330,57 @@ export const getTrendingPosts = asyncHandler(async (req: Request, res: Response)
   res.status(200).json({ success: true, data: finalPosts });
 });
 
-// 8. Get Posts by Filter (NO PAGINATION) -- category id
+/**
+ * 8. Get Posts by Category (Paginated)
+ */
 export const getPostsByFilter = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-
-  // --- Pagination Setup ---
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
   const skip = (page - 1) * limit;
 
   let filter: any = {};
-  let filterType = "all";
   let filterName = "All Posts";
 
-  // --- Identify Filter (Category vs Tag) ---
   if (id !== "all") {
     if (!Types.ObjectId.isValid(id)) throw createError("Invalid ID", 400);
-
-    // Check if it's a Category
     const category = await Category.findById(id);
-    if (category) {
-      filter.category = category._id;
-      filterType = "category";
-      filterName = category.name;
-    } else {
-      // Check if it's a Tag
-      const tag = await Tag.findById(id);
-      if (tag) {
-        filter.tags = tag._id;
-        filterType = "tag";
-        filterName = tag.name;
-      } else {
-        throw createError("Filter not found", 404);
-      }
-    }
+    if (!category) throw createError("Category not found", 404);
+    filter.category = category._id;
+    filterName = category.name;
   }
 
-  // --- Execute Queries (Parallel for speed) ---
   const [posts, totalPosts] = await Promise.all([
-    Post.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("category tags"),
+    Post.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("category", "name slug"),
     Post.countDocuments(filter),
   ]);
-
-  // --- Calculate Pagination Meta ---
-  const totalPages = Math.ceil(totalPosts / limit);
 
   res.status(200).json({
     success: true,
     data: posts,
-    meta: {
-      filterType,
-      filterName,
-      filterId: id,
-    },
-    pagination: {
-      currentPage: page,
-      totalPages,
-      totalPosts,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
-      limit,
-    },
+    meta: { filterName, filterId: id },
+    pagination: { currentPage: page, totalPages: Math.ceil(totalPosts / limit), totalPosts, limit },
   });
 });
 
-// export const getPostsByFilter = asyncHandler(async (req: Request, res: Response) => {
-//   const { id } = req.params;
-
-//   let filter: any = {};
-//   let filterType = "all";
-//   let filterName = "All Posts";
-
-//   if (id !== "all") {
-//     if (!Types.ObjectId.isValid(id)) throw createError("Invalid ID", 400);
-//     const category = await Category.findById(id);
-//     if (category) {
-//       filter.category = category._id;
-//       filterType = "category";
-//       filterName = category.name;
-//     } else {
-//       const tag = await Tag.findById(id);
-//       if (tag) {
-//         filter.tags = tag._id;
-//         filterType = "tag";
-//         filterName = tag.name;
-//       } else throw createError("Not found", 404);
-//     }
-//   }
-
-//   const posts = await Post.find(filter).sort({ createdAt: -1 }).populate("category tags");
-
-//   res.status(200).json({
-//     success: true,
-//     data: posts,
-//     meta: { filterType, filterName, filterId: id },
-//   });
-// });
-
-// 9. Get Breaking News
+/**
+ * 9. Get Breaking News
+ */
 export const getBreakingNews = asyncHandler(async (req: Request, res: Response) => {
   const breaking = await BreakingNews.findOne().populate("posts", "title slug image createdAt");
-
-  if (!breaking) {
-    return res.status(200).json({ success: true, data: [] });
-  }
-  res.status(200).json({ success: true, data: breaking.posts });
+  res.status(200).json({ success: true, data: breaking?.posts || [] });
 });
 
-// 10. Remove From Breaking News
+/**
+ * 10. Remove Post from Breaking News
+ */
 export const removeFromBreakingNews = asyncHandler(async (req: Request, res: Response) => {
   const { postId } = req.params;
-
   const breaking = await BreakingNews.findOne();
+  if (!breaking) return res.status(404).json({ success: false, message: "List not found" });
 
-  if (!breaking) {
-    return res.status(404).json({ success: false, message: "Breaking news list not found" });
-  }
-
-  const originalLength = breaking.posts.length;
   breaking.posts = breaking.posts.filter((id) => id.toString() !== postId) as any;
+  await breaking.save();
 
-  if (breaking.posts.length !== originalLength) {
-    await breaking.save();
-  }
-
-  res.status(200).json({ success: true, message: "Removed from Breaking News", data: breaking.posts });
+  res.status(200).json({ success: true, message: "Removed from Breaking News" });
 });
