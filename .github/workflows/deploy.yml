@@ -29,20 +29,26 @@ jobs:
             git reset --hard origin/main
 
             # 4. 📦 FULL INSTALL 
-            # We MUST install everything first so TypeScript has the @types to build!
             npm install
 
             # 5. ⚡ BUILD THE CODE
             npm run build
 
             # 6. 🧹 MAGIC CLEANUP (Protects your 2GB RAM)
-            # This deletes all the heavy dev tools now that the build is finished
             npm prune --omit=dev
 
-            # 7. 🚀 Smart Restart
-            # max-memory-restart 1G prevents OOM crashes
-            # restart-delay 3000 gives the OS time to recover after the build
-            pm2 restart news-portal --max-memory-restart 1G --update-env --restart-delay 3000
+            # 7. 🚀 Smart Start / Restart (CLUSTER MODE)
+            # This checks if the app is already in PM2. 
+            if pm2 show news-portal > /dev/null; then
+              echo "App exists in PM2. Restarting..."
+              pm2 restart news-portal --max-memory-restart 1G --update-env --restart-delay 3000
+            else
+              echo "App not found. Starting fresh in CLUSTER MODE..."
+              # Assuming your build output goes to dist/index.js based on your folder structure
+              pm2 start dist/index.js --name "news-portal" -i max --max-memory-restart 1G
+            fi
+            
+            # 8. Save the PM2 state so it auto-starts on VPS reboot
             pm2 save
             
             echo "🚀 ROOT-LEVEL DEPLOYMENT SUCCESSFUL"
